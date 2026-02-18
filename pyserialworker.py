@@ -20,10 +20,6 @@ CYAN    = "\033[36m"
 
 
 def list_serial_ports(filter_str: str = "") -> List[str]:
-    """
-    Rough equivalent of your C++ list_serial_ports().
-    Prints port info and returns list of port device names.
-    """
     results: List[str] = []
     for p in list_ports.comports():
         # p.device, p.description, p.hwid
@@ -41,20 +37,10 @@ def list_serial_ports(filter_str: str = "") -> List[str]:
 class ConnectionParams:
     port: str = ""
     baudrate: int = 115200
-    timeout_s: float = 10.0   # like your simpleTimeout(10000ms)
+    timeout_s: float = 10.0 
 
 
 class SerialWorker:
-    """
-    Python translation of your C++ SerialWorker, implemented on top of pyserial.
-
-    Public API mirrors your class:
-      - set_connection_params(port, baudrate)
-      - set_terminators(sending, receiving)
-      - start(), stop()
-      - sendData(data)
-      - get_data() -> str ("" if none)
-    """
 
     def __init__(self, debug_output: bool = False, debug_input: bool = False):
         self.debug_output = debug_output
@@ -64,12 +50,12 @@ class SerialWorker:
         self.sending_terminator = ""
         self.receiving_terminator = ""
 
-        self._ser: Optional[serial.Serial] = None
+        self._ser = None
 
         self._running = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
-        self._rx_queue: "queue.Queue[str]" = queue.Queue()
+        self._rx_queue = queue.Queue()
         self._read_buffer = ""  # accumulated decoded text
 
         # If your protocol is binary, you’ll want bytes parsing instead of str.
@@ -90,11 +76,11 @@ class SerialWorker:
         self.receiving_terminator = receiving
 
     def start(self) -> None:
-        print(f"{GREEN}Starting SerialWorker...{RESET}")
         if self._running.is_set():
             print(f"{YELLOW}SerialWorker already running.{RESET}")
             return
 
+        print(f"{GREEN}Starting SerialWorker...{RESET}")
         self._running.set()
         if self._thread is None or not self._thread.is_alive():
             self._thread = threading.Thread(target=self._loop, name="SerialWorkerThread", daemon=True)
@@ -104,7 +90,6 @@ class SerialWorker:
         print(f"{GREEN}Stopping SerialWorker...{RESET}")
         self._running.clear()
 
-        # Close first to abort reads fast, like your C++
         self._close()
 
         if self._thread and self._thread.is_alive():
@@ -112,8 +97,7 @@ class SerialWorker:
         self._thread = None
 
     def sendData(self, data: str) -> None:
-        ser = self._ser
-        if ser is None or not ser.is_open:
+        if self._ser is None or not self._ser.is_open:
             print(f"{RED}Serial port not open!{RESET}")
             return
 
@@ -122,14 +106,14 @@ class SerialWorker:
             print(f"{CYAN}Serial >> {payload}{RESET}")
 
         try:
-            ser.write(payload.encode(self._encoding, errors=self._decode_errors))
+            self._ser.write(payload.encode(self._encoding, errors=self._decode_errors))
         except Exception as e:
             print(f"{RED}Serial write failed: {e}{RESET}")
             self._close()
 
     def get_data(self) -> str:
         """
-        Non-blocking: returns "" if nothing available (same behavior as your C++).
+        Non-blocking: returns "" if nothing available.
         """
         try:
             return self._rx_queue.get_nowait()
@@ -173,9 +157,7 @@ class SerialWorker:
         self._connect()
 
         while self._running.is_set():
-            ser = self._ser
-
-            if ser is None or not ser.is_open:
+            if self._ser is None or not self._ser.is_open:
                 time.sleep(self._reconnect_delay_s)
                 if self._running.is_set():
                     self._connect()
@@ -183,9 +165,9 @@ class SerialWorker:
 
             try:
                 # pyserial: in_waiting is bytes available without blocking
-                n = ser.in_waiting
+                n = self._ser.in_waiting
                 if n > 0:
-                    raw = ser.read(n)  # returns bytes
+                    raw = self._ser.read(n)  # returns bytes
                     chunk = raw.decode(self._encoding, errors=self._decode_errors)
 
                     if self.debug_input:
